@@ -50,32 +50,45 @@ public class PathSecurityValidator {
             return false;
         }
         
+        // 0. 경로 정규화 (슬래시를 시스템 구분자로 변환)
+        String normalizedPath = path;
+        try {
+            // Windows에서는 슬래시를 백슬래시로 변환
+            if (File.separatorChar == '\\') {
+                normalizedPath = path.replace('/', '\\');
+            } else {
+                normalizedPath = path.replace('\\', '/');
+            }
+        } catch (Exception e) {
+            // 변환 실패 시 원본 사용
+        }
+        
         // 1. Path Traversal 패턴 검사
-        if (PATH_TRAVERSAL_PATTERN.matcher(path).find()) {
+        if (PATH_TRAVERSAL_PATTERN.matcher(normalizedPath).find()) {
             log.warn("Path Traversal 시도 감지: {}", path);
             return false;
         }
         
         // 2. 위험한 문자 검사
-        if (DANGEROUS_CHARS_PATTERN.matcher(path).find()) {
+        if (DANGEROUS_CHARS_PATTERN.matcher(normalizedPath).find()) {
             log.warn("위험한 문자가 포함된 경로: {}", path);
             return false;
         }
         
         // 3. 정규화 후 재검사
         try {
-            Path normalizedPath = Paths.get(path).normalize();
-            String normalized = normalizedPath.toString();
+            Path normalized = Paths.get(normalizedPath).normalize();
+            String normalizedStr = normalized.toString();
             
             // 정규화 후에도 Path Traversal 패턴이 있으면 차단
-            if (PATH_TRAVERSAL_PATTERN.matcher(normalized).find()) {
-                log.warn("정규화 후 Path Traversal 패턴 발견: {}", normalized);
+            if (PATH_TRAVERSAL_PATTERN.matcher(normalizedStr).find()) {
+                log.warn("정규화 후 Path Traversal 패턴 발견: {}", normalizedStr);
                 return false;
             }
             
             // 정규화 후 상위 디렉토리로 이동하는지 확인
-            if (normalized.contains("..")) {
-                log.warn("정규화 후 상위 디렉토리 참조 발견: {}", normalized);
+            if (normalizedStr.contains("..")) {
+                log.warn("정규화 후 상위 디렉토리 참조 발견: {}", normalizedStr);
                 return false;
             }
             
@@ -85,7 +98,7 @@ public class PathSecurityValidator {
         }
         
         // 4. Windows 예약 이름 검사
-        String fileName = new File(path).getName();
+        String fileName = new File(normalizedPath).getName();
         for (String reserved : WINDOWS_RESERVED_NAMES) {
             if (fileName.equalsIgnoreCase(reserved) || 
                 fileName.toUpperCase().startsWith(reserved + ".")) {

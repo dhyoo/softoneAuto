@@ -255,5 +255,116 @@ public class InputValidator {
     public static String sanitizeCommand(String command) {
         return CommandSecurityValidator.sanitizeCommand(command);
     }
+    
+    /**
+     * 숫자 검증 (정수)
+     */
+    public static boolean isValidInteger(String text) {
+        if (isEmpty(text)) return false;
+        try {
+            Integer.parseInt(text.trim());
+            return true;
+        } catch (NumberFormatException e) {
+            return false;
+        }
+    }
+    
+    /**
+     * 숫자 검증 (실수)
+     */
+    public static boolean isValidDouble(String text) {
+        if (isEmpty(text)) return false;
+        try {
+            Double.parseDouble(text.trim());
+            return true;
+        } catch (NumberFormatException e) {
+            return false;
+        }
+    }
+    
+    /**
+     * 숫자 범위 검증 (정수)
+     */
+    public static boolean isValidIntegerRange(String text, int min, int max) {
+        if (!isValidInteger(text)) return false;
+        try {
+            int value = Integer.parseInt(text.trim());
+            return value >= min && value <= max;
+        } catch (NumberFormatException e) {
+            return false;
+        }
+    }
+    
+    /**
+     * 날짜 형식 검증 (yyyy-MM-dd)
+     */
+    public static boolean isValidDateFormat(String date) {
+        if (isEmpty(date)) return false;
+        return date.matches("^\\d{4}-\\d{2}-\\d{2}$");
+    }
+    
+    /**
+     * 시간 형식 검증 (HH:mm)
+     */
+    public static boolean isValidTimeFormat(String time) {
+        if (isEmpty(time)) return false;
+        return time.matches("^\\d{2}:\\d{2}$");
+    }
+    
+    /**
+     * SQL Injection 방지 (기본적인 패턴 검사)
+     * 주의: 완전한 방어를 위해서는 PreparedStatement 사용 필수
+     */
+    public static boolean containsSqlInjection(String text) {
+        if (text == null || text.isEmpty()) return false;
+        
+        String upperText = text.toUpperCase();
+        
+        // 위험한 SQL 키워드 패턴
+        String[] dangerousPatterns = {
+            "';", "--", "/*", "*/", "xp_", "sp_", 
+            "UNION", "SELECT", "INSERT", "UPDATE", "DELETE", 
+            "DROP", "CREATE", "ALTER", "EXEC", "EXECUTE"
+        };
+        
+        for (String pattern : dangerousPatterns) {
+            if (upperText.contains(pattern)) {
+                return true;
+            }
+        }
+        
+        return false;
+    }
+    
+    /**
+     * SQL Injection 패턴 제거
+     */
+    public static String sanitizeSql(String text) {
+        if (text == null || text.isEmpty()) return "";
+        
+        // 위험한 문자 이스케이프
+        return text.replace("'", "''")
+                   .replace(";", "")
+                   .replace("--", "")
+                   .replace("/*", "")
+                   .replace("*/", "");
+    }
+    
+    /**
+     * 최대 길이 검증
+     */
+    public static boolean isValidLength(String text, int maxLength) {
+        if (text == null) return true;
+        return text.length() <= maxLength;
+    }
+    
+    /**
+     * 최소/최대 길이 검증
+     */
+    public static boolean isValidLengthRange(String text, int minLength, int maxLength) {
+        if (text == null) return minLength == 0;
+        int length = text.length();
+        return length >= minLength && length <= maxLength;
+    }
 }
 

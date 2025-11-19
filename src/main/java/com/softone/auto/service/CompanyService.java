@@ -1,20 +1,24 @@
 package com.softone.auto.service;
 
 import com.softone.auto.model.Company;
-import com.softone.auto.repository.CompanyRepository;
+import com.softone.auto.repository.sqlite.CompanySqliteRepository;
+import com.softone.auto.util.PrivacyMaskingUtil;
+import lombok.extern.slf4j.Slf4j;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * 회사 관리 서비스
  */
+@Slf4j
 public class CompanyService {
     
-    private final CompanyRepository companyRepository;
+    private final CompanySqliteRepository companyRepository;
     
     public CompanyService() {
-        this.companyRepository = new CompanyRepository();
+        this.companyRepository = new CompanySqliteRepository();
     }
     
     /**
@@ -24,8 +28,7 @@ public class CompanyService {
         try {
             return companyRepository.findAll();
         } catch (Exception e) {
-            System.err.println("회사 데이터 조회 오류: " + e.getMessage());
-            e.printStackTrace();
+            log.error("회사 데이터 조회 오류: {}", e.getMessage(), e);
             return new java.util.ArrayList<>();
         }
     }
@@ -37,8 +40,7 @@ public class CompanyService {
         try {
             return companyRepository.findAllActive();
         } catch (Exception e) {
-            System.err.println("활성 회사 데이터 조회 오류: " + e.getMessage());
-            e.printStackTrace();
+            log.error("활성 회사 데이터 조회 오류: {}", e.getMessage(), e);
             return new java.util.ArrayList<>();
         }
     }
@@ -62,7 +64,8 @@ public class CompanyService {
      */
     public Company createCompany(String name, String projectName, String contractType,
                                   LocalDate startDate, LocalDate endDate, String notes) {
-        System.out.println("[CompanyService.createCompany] 회사 생성 시작: " + name);
+        // 로그에 회사 이름은 마스킹하지 않음 (회사명은 개인정보가 아님)
+        // 다만, 필요시 PrivacyMaskingUtil.maskName(name) 사용 가능
         Company company = new Company();
         company.setName(name);
         company.setProjectName(projectName);
@@ -73,11 +76,14 @@ public class CompanyService {
         company.setNotes(notes);
         
         Company saved = companyRepository.save(company);
-        System.out.println("[CompanyService.createCompany] 회사 생성 완료: " + name + " (ID: " + saved.getId() + ")");
+        
+        // 로그에 회사 이름은 마스킹하지 않음 (회사명은 개인정보가 아님)
+        // 다만, 필요시 PrivacyMaskingUtil.maskName(name) 사용 가능
+        log.info("회사 생성 완료 - 이름: {}, ID: {}", name, saved.getId());
         
         // 저장 후 즉시 확인
         List<Company> all = companyRepository.findAll();
-        System.out.println("[CompanyService.createCompany] 저장 후 전체 회사 수: " + all.size());
+        log.debug("저장 후 전체 회사 수: {}건", all.size());
         
         return saved;
     }
@@ -86,14 +92,19 @@ public class CompanyService {
      * 회사 정보 수정
      */
     public Company updateCompany(Company company) {
-        return companyRepository.save(company);
+        log.info("회사 정보 수정 - ID: {}, 이름: {}", company.getId(), company.getName());
+        Company updated = companyRepository.save(company);
+        log.debug("회사 정보 수정 완료 - ID: {}", updated.getId());
+        return updated;
     }
     
     /**
      * 회사 삭제
      */
     public void deleteCompany(String id) {
+        log.info("회사 삭제 - ID: {}", id);
         companyRepository.deleteById(id);
+        log.debug("회사 삭제 완료 - ID: {}", id);
     }
 }
 

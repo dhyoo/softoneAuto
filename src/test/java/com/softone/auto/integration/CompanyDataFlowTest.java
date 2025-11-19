@@ -1,7 +1,6 @@
 package com.softone.auto.integration;
 
 import com.softone.auto.model.Company;
-import com.softone.auto.repository.CompanyRepository;
 import com.softone.auto.service.CompanyService;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.DisplayName;
@@ -24,7 +23,6 @@ import static org.junit.jupiter.api.Assertions.*;
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 public class CompanyDataFlowTest {
     
-    private CompanyRepository repository;
     private CompanyService service;
     
     @BeforeAll
@@ -38,9 +36,8 @@ public class CompanyDataFlowTest {
     void setUp() {
         System.out.println("\n--- 테스트 케이스 시작 ---");
         try {
-            repository = new CompanyRepository();
             service = new CompanyService();
-            System.out.println("✓ Repository 및 Service 초기화 완료");
+            System.out.println("✓ Service 초기화 완료");
         } catch (Exception e) {
             System.err.println("✗ 초기화 실패: " + e.getMessage());
             e.printStackTrace();
@@ -54,24 +51,22 @@ public class CompanyDataFlowTest {
     }
     
     @Test
-    @DisplayName("1. 도메인 레이어: Repository 직접 저장/조회 테스트")
+    @DisplayName("1. 도메인 레이어: Service를 통한 저장/조회 테스트")
     void testRepositoryLayer() {
-        System.out.println("\n[1단계] 도메인 레이어 테스트");
-        System.out.println("  → Repository 직접 저장/조회");
+        System.out.println("\n[1단계] Service 레이어 테스트");
+        System.out.println("  → Service를 통한 저장/조회");
         
         try {
             // 저장
-            Company company = new Company();
-            company.setName("Repository 테스트 회사");
-            company.setProjectName("Repository 테스트 프로젝트");
-            company.setContractType("파견");
-            company.setStartDate(LocalDate.of(2024, 1, 1));
-            company.setEndDate(LocalDate.of(2024, 12, 31));
-            company.setStatus("ACTIVE");
-            company.setNotes("Repository 레이어 테스트");
-            
-            System.out.println("    저장 시작: " + company.getName());
-            Company saved = repository.save(company);
+            System.out.println("    저장 시작");
+            Company saved = service.createCompany(
+                "Repository 테스트 회사",
+                "Repository 테스트 프로젝트",
+                "파견",
+                LocalDate.of(2024, 1, 1),
+                LocalDate.of(2024, 12, 31),
+                "Repository 레이어 테스트"
+            );
             System.out.println("    저장 완료: " + saved.getName() + " (ID: " + saved.getId() + ")");
             
             assertNotNull(saved);
@@ -80,7 +75,7 @@ public class CompanyDataFlowTest {
             
             // 조회
             System.out.println("    조회 시작");
-            List<Company> all = repository.findAll();
+            List<Company> all = service.getAllCompanies();
             System.out.println("    조회 완료: " + all.size() + "개");
             
             assertFalse(all.isEmpty(), "회사 목록이 비어있습니다!");
@@ -88,17 +83,17 @@ public class CompanyDataFlowTest {
                       "저장한 회사를 찾을 수 없습니다!");
             
             // 활성 회사 조회
-            List<Company> active = repository.findAllActive();
+            List<Company> active = service.getActiveCompanies();
             System.out.println("    활성 회사 조회: " + active.size() + "개");
             
             assertFalse(active.isEmpty(), "활성 회사 목록이 비어있습니다!");
             
-            System.out.println("  ✓ 도메인 레이어 테스트 성공");
+            System.out.println("  ✓ Service 레이어 테스트 성공");
             
         } catch (Exception e) {
-            System.err.println("  ✗ 도메인 레이어 테스트 실패: " + e.getMessage());
+            System.err.println("  ✗ Service 레이어 테스트 실패: " + e.getMessage());
             e.printStackTrace();
-            fail("도메인 레이어 테스트 실패", e);
+            fail("Service 레이어 테스트 실패", e);
         }
     }
     
@@ -159,40 +154,39 @@ public class CompanyDataFlowTest {
         System.out.println("  → 여러 Repository 인스턴스 간 데이터 공유");
         
         try {
-            // 첫 번째 Repository로 저장
-            CompanyRepository repo1 = new CompanyRepository();
-            Company company = new Company();
-            company.setName("통합 테스트 회사");
-            company.setProjectName("통합 테스트 프로젝트");
-            company.setContractType("파견");
-            company.setStartDate(LocalDate.of(2024, 3, 1));
-            company.setEndDate(LocalDate.of(2024, 10, 31));
-            company.setStatus("ACTIVE");
+            // 첫 번째 Service로 저장
+            CompanyService service1 = new CompanyService();
+            System.out.println("    [Service1] 저장 시작");
+            Company saved = service1.createCompany(
+                "통합 테스트 회사",
+                "통합 테스트 프로젝트",
+                "파견",
+                LocalDate.of(2024, 3, 1),
+                LocalDate.of(2024, 10, 31),
+                "통합 테스트"
+            );
+            System.out.println("    [Service1] 저장 완료: " + saved.getName());
             
-            System.out.println("    [Repo1] 저장 시작: " + company.getName());
-            Company saved = repo1.save(company);
-            System.out.println("    [Repo1] 저장 완료: " + saved.getName());
-            
-            // 두 번째 Repository로 조회 (다른 인스턴스)
-            CompanyRepository repo2 = new CompanyRepository();
-            System.out.println("    [Repo2] 조회 시작");
-            List<Company> all = repo2.findAll();
-            System.out.println("    [Repo2] 조회 완료: " + all.size() + "개");
-            
-            // 세 번째 Service로 조회
+            // 두 번째 Service로 조회 (다른 인스턴스)
             CompanyService service2 = new CompanyService();
             System.out.println("    [Service2] 조회 시작");
-            List<Company> active = service2.getActiveCompanies();
-            System.out.println("    [Service2] 조회 완료: " + active.size() + "개");
+            List<Company> all = service2.getAllCompanies();
+            System.out.println("    [Service2] 조회 완료: " + all.size() + "개");
+            
+            // 세 번째 Service로 활성 회사 조회
+            CompanyService service3 = new CompanyService();
+            System.out.println("    [Service3] 활성 회사 조회 시작");
+            List<Company> active = service3.getActiveCompanies();
+            System.out.println("    [Service3] 활성 회사 조회 완료: " + active.size() + "개");
             
             // 검증
-            assertFalse(all.isEmpty(), "Repo2에서 데이터를 찾을 수 없습니다!");
+            assertFalse(all.isEmpty(), "Service2에서 데이터를 찾을 수 없습니다!");
             assertTrue(all.stream().anyMatch(c -> c.getName().equals("통합 테스트 회사")), 
-                      "Repo2에서 저장한 회사를 찾을 수 없습니다!");
-            
-            assertFalse(active.isEmpty(), "Service2에서 데이터를 찾을 수 없습니다!");
-            assertTrue(active.stream().anyMatch(c -> c.getName().equals("통합 테스트 회사")), 
                       "Service2에서 저장한 회사를 찾을 수 없습니다!");
+            
+            assertFalse(active.isEmpty(), "Service3에서 데이터를 찾을 수 없습니다!");
+            assertTrue(active.stream().anyMatch(c -> c.getName().equals("통합 테스트 회사")), 
+                      "Service3에서 저장한 회사를 찾을 수 없습니다!");
             
             System.out.println("  ✓ 통합 테스트 성공");
             

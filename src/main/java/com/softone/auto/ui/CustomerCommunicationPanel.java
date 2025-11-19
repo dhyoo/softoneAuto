@@ -67,17 +67,38 @@ public class CustomerCommunicationPanel extends JPanel {
         
         // 중앙: 분할 패널
         JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
-        splitPane.setResizeWeight(0.5);
+        splitPane.setResizeWeight(0.0);  // 좌측 목록 크기 고정 (0.0 = 좌측 고정, 1.0 = 우측 고정)
         splitPane.setBorder(null);
         splitPane.setDividerSize(5);
         splitPane.setContinuousLayout(true);
         splitPane.setOneTouchExpandable(true);
         
         // 왼쪽: 테이블
-        splitPane.setLeftComponent(createTablePanel());
+        JPanel tablePanel = createTablePanel();
+        tablePanel.setPreferredSize(new Dimension(400, 0));
+        tablePanel.setMinimumSize(new Dimension(400, 0));
+        tablePanel.setMaximumSize(new Dimension(400, Integer.MAX_VALUE));
+        splitPane.setLeftComponent(tablePanel);
         
         // 오른쪽: 입력 폼
         splitPane.setRightComponent(createFormPanel());
+        
+        // 초기 divider 위치 설정 (컴포넌트가 표시된 후에 설정)
+        SwingUtilities.invokeLater(() -> {
+            splitPane.setDividerLocation(400);  // 좌측 목록을 400px로 고정
+        });
+        
+        // 창 크기 변경 시 divider 위치 유지
+        addComponentListener(new java.awt.event.ComponentAdapter() {
+            @Override
+            public void componentResized(java.awt.event.ComponentEvent e) {
+                SwingUtilities.invokeLater(() -> {
+                    if (splitPane.getDividerLocation() != 400) {
+                        splitPane.setDividerLocation(400);
+                    }
+                });
+            }
+        });
         
         mainPanel.add(splitPane, BorderLayout.CENTER);
         
@@ -117,7 +138,7 @@ public class CustomerCommunicationPanel extends JPanel {
         JPanel panel = ModernDesign.createSection("소통 목록");
         
         // 테이블
-        String[] columnNames = {"유형", "제목", "고객", "우리측", "일시", "상태", "우선순위"};
+        String[] columnNames = {"유형", "제목", "고객", "당사", "일시", "상태", "우선순위"};
         tableModel = new DefaultTableModel(columnNames, 0) {
             @Override
             public boolean isCellEditable(int row, int column) {
@@ -188,14 +209,15 @@ public class CustomerCommunicationPanel extends JPanel {
         // 고객 담당자
         gbc.gridx = 0; gbc.gridy = row; gbc.weightx = 0.0;
         formPanel.add(createCompactLabel("고객 담당자"), gbc);
-        gbc.gridx = 1; gbc.weightx = 0.5;
+        gbc.gridx = 1; gbc.weightx = 1.0;
         customerNameField = createCompactTextField();
         formPanel.add(customerNameField, gbc);
-        
-        // 우리측 담당자
-        gbc.gridx = 2; gbc.weightx = 0.0;
-        formPanel.add(createCompactLabel("우리측 담당자"), gbc);
-        gbc.gridx = 3; gbc.weightx = 0.5;
+        row++;
+
+        //당사 담당자 (한 줄씩 줄바꿈)
+        gbc.gridx = 0; gbc.gridy = row; gbc.weightx = 0.0;
+        formPanel.add(createCompactLabel("당사 담당자"), gbc);
+        gbc.gridx = 1; gbc.weightx = 1.0;
         ourRepField = createCompactTextField();
         formPanel.add(ourRepField, gbc);
         row++;
@@ -203,37 +225,35 @@ public class CustomerCommunicationPanel extends JPanel {
         // 소통 일시
         gbc.gridx = 0; gbc.gridy = row; gbc.weightx = 0.0;
         formPanel.add(createCompactLabel("소통 일시"), gbc);
-        gbc.gridx = 1; gbc.weightx = 0.5;
+        gbc.gridx = 1; gbc.weightx = 1.0;
         commDateField = createCompactTextField();
         commDateField.setText(LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")));
         commDateField.setToolTipText("형식: 2025-01-15 14:30");
         formPanel.add(commDateField, gbc);
-        
-        // 처리 기한
-        gbc.gridx = 2; gbc.weightx = 0.0;
-        formPanel.add(createCompactLabel("처리 기한"), gbc);
         row++;
+        
+        // 처리 기한 (한 줄씩 줄바꿈)
         gbc.gridx = 0; gbc.gridy = row; gbc.weightx = 0.0;
+        formPanel.add(createCompactLabel("처리 기한"), gbc);
+        gbc.gridx = 1; gbc.weightx = 1.0;
         dueDateField = createCompactTextField();
         dueDateField.setToolTipText("형식: 2025-01-20 18:00");
-        gbc.gridx = 1; gbc.weightx = 0.5;
         formPanel.add(dueDateField, gbc);
         row++;
         
         // 상태
         gbc.gridx = 0; gbc.gridy = row; gbc.weightx = 0.0;
         formPanel.add(createCompactLabel("상태"), gbc);
-        gbc.gridx = 1; gbc.weightx = 0.5;
+        gbc.gridx = 1; gbc.weightx = 1.0;
         statusCombo = createCompactCombo(new String[]{"PENDING", "IN_PROGRESS", "COMPLETED"});
         formPanel.add(statusCombo, gbc);
-        
-        // 우선순위
-        gbc.gridx = 2; gbc.weightx = 0.0;
-        formPanel.add(createCompactLabel("우선순위"), gbc);
         row++;
+        
+        // 우선순위 (한 줄씩 줄바꿈)
         gbc.gridx = 0; gbc.gridy = row; gbc.weightx = 0.0;
+        formPanel.add(createCompactLabel("우선순위"), gbc);
+        gbc.gridx = 1; gbc.weightx = 1.0;
         priorityCombo = createCompactCombo(new String[]{"HIGH", "MEDIUM", "LOW"});
-        gbc.gridx = 1; gbc.weightx = 0.5;
         formPanel.add(priorityCombo, gbc);
         row++;
         

@@ -2,7 +2,7 @@ package com.softone.auto.service;
 
 import com.softone.auto.model.Company;
 import com.softone.auto.model.Issue;
-import com.softone.auto.repository.IssueRepository;
+import com.softone.auto.repository.sqlite.IssueSqliteRepository;
 import com.softone.auto.util.AppContext;
 
 import java.time.LocalDateTime;
@@ -15,10 +15,10 @@ import java.util.stream.Collectors;
  */
 public class IssueService {
     
-    private final IssueRepository repository;
+    private final IssueSqliteRepository repository;
     
     public IssueService() {
-        this.repository = new IssueRepository();
+        this.repository = new IssueSqliteRepository();
     }
     
     /**

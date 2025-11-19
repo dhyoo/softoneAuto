@@ -3,6 +3,7 @@ package com.softone.auto.ui;
 import com.softone.auto.model.WeeklyReport;
 import com.softone.auto.service.WeeklyReportService;
 import com.softone.auto.util.AppContext;
+import com.softone.auto.util.AsyncDataLoader;
 import com.softone.auto.util.ErrorMessageMapper;
 import com.softone.auto.util.ExcelReportGenerator;
 import com.softone.auto.util.PdfReportGenerator;
@@ -53,8 +54,7 @@ public class WeeklyReportPanel extends JPanel {
     // 캐시된 보고서 목록 (스레드 안전 컬렉션 사용)
     private final List<WeeklyReport> cachedReports = new CopyOnWriteArrayList<>();
     
-    // 캐시 동기화를 위한 락 객체 (향후 동기화 블록 추가 시 사용 예정)
-    @SuppressWarnings("unused")
+    // 캐시 동기화를 위한 락 객체
     private final Object cacheLock = new Object();
     
     public WeeklyReportPanel() {
@@ -62,7 +62,7 @@ public class WeeklyReportPanel extends JPanel {
         
         try {
             isProgrammaticUpdate = true;  // 초기화 시작
-        initializeUI();
+            initializeUI();
             isProgrammaticUpdate = false;  // 초기화 완료
             isFormModified = false;  // 명시적으로 false 설정
             
@@ -90,14 +90,31 @@ public class WeeklyReportPanel extends JPanel {
         
         // 좌우 분할
         JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
+        splitPane.setResizeWeight(0.0);  // 좌측 목록 크기 고정 (0.0 = 좌측 고정, 1.0 = 우측 고정)
         splitPane.setDividerLocation(350);
         splitPane.setBorder(null);
         
         // 왼쪽: 보고서 리스트
-        splitPane.setLeftComponent(createListPanel());
+        JPanel listPanel = createListPanel();
+        listPanel.setPreferredSize(new Dimension(350, 0));
+        listPanel.setMinimumSize(new Dimension(350, 0));
+        listPanel.setMaximumSize(new Dimension(350, Integer.MAX_VALUE));
+        splitPane.setLeftComponent(listPanel);
         
         // 오른쪽: 작성/수정 폼
         splitPane.setRightComponent(createFormPanel());
+        
+        // 창 크기 변경 시 divider 위치 유지
+        addComponentListener(new java.awt.event.ComponentAdapter() {
+            @Override
+            public void componentResized(java.awt.event.ComponentEvent e) {
+                SwingUtilities.invokeLater(() -> {
+                    if (splitPane.getDividerLocation() != 350) {
+                        splitPane.setDividerLocation(350);
+                    }
+                });
+            }
+        });
         
         add(splitPane);
     }
@@ -618,75 +635,96 @@ public class WeeklyReportPanel extends JPanel {
     }
     
     /**
-     * 보고서 목록 로드 (public 메서드로 외부에서 호출 가능)
+     * 보고서 목록 로드 (비동기 처리)
+     * AsyncDataLoader를 사용하여 백그라운드 스레드에서 데이터를 로드하고,
+     * EDT에서 UI를 업데이트하여 UI 블로킹을 방지합니다.
+     * 
+     * @see AsyncDataLoader
      */
     public void loadReports() {
-        System.out.println("=== loadReports() 시작 ===");
+        System.out.println("=== loadReports() 시작 (비동기) ===");
         
-        synchronized (cacheLock) {
-            // 현재 선택된 보고서 ID 저장 (복원용)
-            String currentReportId = (currentReport != null) ? currentReport.getId() : null;
-            System.out.println("  현재 선택된 보고서 ID: " + currentReportId);
-            
-            // 이전 캐시 백업 (예외 발생 시 복원용)
-            List<WeeklyReport> backupReports = new ArrayList<>(cachedReports);
-            int previousRowCount = tableModel.getRowCount();
-            
-            try {
-                // 현재 회사 확인
-                var currentCompany = AppContext.getInstance().getCurrentCompany();
-                System.out.println("  현재 회사: " + (currentCompany != null ? currentCompany.getName() : "없음"));
-                
-                // 보고서 목록 조회
-                List<WeeklyReport> newReports = reportService.getAllReports();
-                System.out.println("  조회된 보고서: " + newReports.size() + "건");
-                
-                // 최신순 정렬 (시작일 기준 내림차순)
-                newReports.sort((r1, r2) -> r2.getStartDate().compareTo(r1.getStartDate()));
-                System.out.println("  정렬 완료");
-                
-                // 캐시 업데이트 (원자적)
-                cachedReports.clear();
-                cachedReports.addAll(newReports);
-                System.out.println("  캐시 업데이트 완료: " + cachedReports.size() + "건");
-                
-                // UI 업데이트는 EDT에서 실행
-                final List<WeeklyReport> reportsForUI = new ArrayList<>(newReports);
-                final String finalCurrentReportId = currentReportId;
-                SwingUtilities.invokeLater(() -> {
-                    synchronized (cacheLock) {
-                        updateTableModel(reportsForUI, finalCurrentReportId);
+        // 현재 선택된 보고서 ID 저장 (복원용)
+        final String currentReportId = (currentReport != null) ? currentReport.getId() : null;
+        System.out.println("  현재 선택된 보고서 ID: " + currentReportId);
+        
+        // 이전 캐시 백업 (예외 발생 시 복원용)
+        final List<WeeklyReport> backupReports = new ArrayList<>(cachedReports);
+        final int previousRowCount = tableModel.getRowCount();
+        
+        // 로딩 인디케이터 표시 (선택적 - 필요시 활성화)
+        // 현재는 백그라운드에서 조용히 로드하고, 완료 시 테이블만 갱신
+        
+        AsyncDataLoader.loadAsync(
+            () -> {
+                // 백그라운드 스레드에서 실행
+                try {
+                    // 현재 회사 확인
+                    var currentCompany = AppContext.getInstance().getCurrentCompany();
+                    System.out.println("  현재 회사: " + (currentCompany != null ? currentCompany.getName() : "없음"));
+                    
+                    // 보고서 목록 조회
+                    List<WeeklyReport> newReports = reportService.getAllReports();
+                    System.out.println("  조회된 보고서: " + newReports.size() + "건");
+                    
+                    // 최신순 정렬 (시작일 기준 내림차순)
+                    newReports.sort((r1, r2) -> r2.getStartDate().compareTo(r1.getStartDate()));
+                    System.out.println("  정렬 완료");
+                    
+                    return newReports;
+                } catch (Exception e) {
+                    System.err.println("✗ 주간보고서 로드 실패: " + e.getMessage());
+                    ErrorMessageMapper.logError("보고서 로드", e);
+                    // 예외를 던져서 UI 업데이트 단계에서 처리
+                    throw new RuntimeException("보고서 로드 실패", e);
+                }
+            },
+            (newReports) -> {
+                // EDT에서 실행 - UI 업데이트
+                synchronized (cacheLock) {
+                    if (newReports == null) {
+                        // 로드 실패 시 백업으로 복원
+                        System.out.println("  → 백업 데이터로 복원 시도");
+                        cachedReports.clear();
+                        cachedReports.addAll(backupReports);
+                        restoreTableModel(backupReports, previousRowCount);
+                        
+                        JOptionPane.showMessageDialog(WeeklyReportPanel.this,
+                            "보고서 목록을 불러오는 중 오류가 발생했습니다.\n\n이전 목록을 유지합니다.",
+                            "오류",
+                            JOptionPane.ERROR_MESSAGE);
+                        return;
                     }
-                });
-                
-                System.out.println("=== loadReports() 완료 ===\n");
-                
-            } catch (Exception e) {
-                System.err.println("✗ 주간보고서 로드 실패: " + e.getMessage());
-                ErrorMessageMapper.logError("보고서 로드", e);
-                
-                // 예외 발생 시 백업으로 복원
-                System.out.println("  → 백업 데이터로 복원 시도");
-                cachedReports.clear();
-                cachedReports.addAll(backupReports);
-                
-                // UI도 복원
-                final List<WeeklyReport> finalBackupReports = new ArrayList<>(backupReports);
-                final int finalPreviousRowCount = previousRowCount;
-                SwingUtilities.invokeLater(() -> {
-                    synchronized (cacheLock) {
-                        restoreTableModel(finalBackupReports, finalPreviousRowCount);
+                    
+                    try {
+                        // 캐시 업데이트 (원자적)
+                        cachedReports.clear();
+                        cachedReports.addAll(newReports);
+                        System.out.println("  캐시 업데이트 완료: " + cachedReports.size() + "건");
+                        
+                        // UI 업데이트
+                        updateTableModel(newReports, currentReportId);
+                        
+                        System.out.println("=== loadReports() 완료 ===\n");
+                    } catch (Exception e) {
+                        // UI 업데이트 중 예외 발생 시 백업으로 복원
+                        System.err.println("✗ UI 업데이트 실패: " + e.getMessage());
+                        ErrorMessageMapper.logError("보고서 UI 업데이트", e);
+                        
+                        cachedReports.clear();
+                        cachedReports.addAll(backupReports);
+                        restoreTableModel(backupReports, previousRowCount);
+                        
+                        String userMessage = ErrorMessageMapper.getUserFriendlyMessage(e);
+                        JOptionPane.showMessageDialog(WeeklyReportPanel.this,
+                            "보고서 목록을 불러오는 중 오류가 발생했습니다:\n\n" + userMessage +
+                            "\n\n이전 목록을 유지합니다.",
+                            "오류",
+                            JOptionPane.ERROR_MESSAGE);
                     }
-                });
-                
-                String userMessage = ErrorMessageMapper.getUserFriendlyMessage(e);
-                JOptionPane.showMessageDialog(this, 
-                    "보고서 목록을 불러오는 중 오류가 발생했습니다:\n\n" + userMessage + 
-                    "\n\n이전 목록을 유지합니다.", 
-                    "오류", 
-                    JOptionPane.ERROR_MESSAGE);
+                }
             }
-        }
+        );
     }
     
     /**
@@ -1123,61 +1161,105 @@ public class WeeklyReportPanel extends JPanel {
     }
     
     /**
-     * Excel 생성
+     * Excel 생성 (비동기 처리)
      */
     private void generateExcel() {
-        try {
-            if (currentReport == null) {
-                saveOrUpdateReport();
-            }
-            if (currentReport != null) {
-                String fileName = ExcelReportGenerator.generateWeeklyReport(currentReport);
-                if (fileName != null) {
-                    JOptionPane.showMessageDialog(this, 
-                            "Excel 파일이 생성되었습니다:\n" + new File(fileName).getAbsolutePath(),
-                            "완료",
-                            JOptionPane.INFORMATION_MESSAGE);
-                } else {
-                    JOptionPane.showMessageDialog(this, "Excel 생성 실패", "오류", JOptionPane.ERROR_MESSAGE);
-                }
-            }
-        } catch (Exception e) {
-            ErrorMessageMapper.logError("Excel 생성", e);
-            String userMessage = ErrorMessageMapper.getUserFriendlyMessage(e);
-            JOptionPane.showMessageDialog(this, 
-                    "Excel 파일 생성 중 오류가 발생했습니다:\n\n" + userMessage,
-                    "오류",
-                    JOptionPane.ERROR_MESSAGE);
-        }
+        generateReportFile("Excel", "Excel 생성", "Excel 파일을 생성하고 있습니다...", 
+            "Excel 파일이 생성되었습니다:\n", "Excel 생성 실패", 
+            () -> ExcelReportGenerator.generateWeeklyReport(currentReport));
     }
     
     /**
-     * PDF 생성
+     * PDF 생성 (비동기 처리)
      */
     private void generatePdf() {
-        try {
+        generateReportFile("PDF", "PDF 생성", "PDF 파일을 생성하고 있습니다...", 
+            "PDF 파일이 생성되었습니다:\n", "PDF 생성 실패", 
+            () -> PdfReportGenerator.generateWeeklyReport(currentReport));
+    }
+    
+    /**
+     * 보고서 파일 생성 공통 메서드 (Excel/PDF)
+     * 
+     * @param fileType 파일 타입 (예: "Excel", "PDF")
+     * @param dialogTitle 다이얼로그 제목
+     * @param progressMessage 진행 메시지
+     * @param successMessage 성공 메시지
+     * @param errorTitle 오류 제목
+     * @param generator 파일 생성 함수
+     */
+    private void generateReportFile(String fileType, String dialogTitle, String progressMessage,
+                                     String successMessage, String errorTitle,
+                                     java.util.function.Supplier<String> generator) {
+        if (currentReport == null) {
+            saveOrUpdateReport();
             if (currentReport == null) {
-                saveOrUpdateReport();
+                return; // 저장 실패 시 중단
             }
-            if (currentReport != null) {
-                String fileName = PdfReportGenerator.generateWeeklyReport(currentReport);
-                if (fileName != null) {
-                    JOptionPane.showMessageDialog(this, 
-                            "PDF 파일이 생성되었습니다:\n" + new File(fileName).getAbsolutePath(),
-                            "완료",
-                            JOptionPane.INFORMATION_MESSAGE);
-                } else {
-                    JOptionPane.showMessageDialog(this, "PDF 생성 실패", "오류", JOptionPane.ERROR_MESSAGE);
+        }
+        
+        // 진행률 표시 다이얼로그
+        JProgressBar progressBar = new JProgressBar(0, 100);
+        progressBar.setStringPainted(true);
+        progressBar.setString(fileType + " 생성 중...");
+        progressBar.setIndeterminate(true); // 실제 진행률을 알 수 없으므로 무한 진행 표시
+        
+        JDialog progressDialog = new JDialog((Frame) SwingUtilities.getWindowAncestor(this), dialogTitle, true);
+        progressDialog.setLayout(new BorderLayout());
+        progressDialog.add(new JLabel(progressMessage), BorderLayout.NORTH);
+        progressDialog.add(progressBar, BorderLayout.CENTER);
+        progressDialog.setSize(350, 120);
+        progressDialog.setLocationRelativeTo(this);
+        progressDialog.setDefaultCloseOperation(JDialog.DO_NOTHING_ON_CLOSE); // 작업 중 닫기 방지
+        
+        SwingWorker<String, Integer> worker = new SwingWorker<String, Integer>() {
+            @Override
+            protected String doInBackground() throws Exception {
+                try {
+                    return generator.get();
+                } catch (Exception e) {
+                    ErrorMessageMapper.logError(fileType + " 생성", e);
+                    throw e;
                 }
             }
-        } catch (Exception e) {
-            ErrorMessageMapper.logError("PDF 생성", e);
-            String userMessage = ErrorMessageMapper.getUserFriendlyMessage(e);
-            JOptionPane.showMessageDialog(this, 
-                    "PDF 파일 생성 중 오류가 발생했습니다:\n\n" + userMessage,
-                    "오류",
-                    JOptionPane.ERROR_MESSAGE);
-        }
+            
+            @Override
+            protected void done() {
+                progressBar.setIndeterminate(false);
+                progressBar.setValue(100);
+                progressDialog.dispose();
+                
+                try {
+                    String fileName = get();
+                    if (fileName != null && !fileName.isEmpty()) {
+                        JOptionPane.showMessageDialog(WeeklyReportPanel.this,
+                            successMessage + new File(fileName).getAbsolutePath(),
+                            "완료", JOptionPane.INFORMATION_MESSAGE);
+                    } else {
+                        JOptionPane.showMessageDialog(WeeklyReportPanel.this,
+                            errorTitle, "오류", JOptionPane.ERROR_MESSAGE);
+                    }
+                } catch (java.util.concurrent.ExecutionException e) {
+                    Throwable cause = e.getCause();
+                    Exception exceptionToLog = (cause instanceof Exception) ? (Exception) cause : 
+                                              (cause != null ? new Exception(cause) : e);
+                    ErrorMessageMapper.logError(fileType + " 생성", exceptionToLog);
+                    String userMessage = ErrorMessageMapper.getUserFriendlyMessage(exceptionToLog);
+                    JOptionPane.showMessageDialog(WeeklyReportPanel.this,
+                        fileType + " 파일 생성 중 오류가 발생했습니다:\n\n" + userMessage,
+                        "오류", JOptionPane.ERROR_MESSAGE);
+                } catch (Exception e) {
+                    ErrorMessageMapper.logError(fileType + " 생성", e);
+                    String userMessage = ErrorMessageMapper.getUserFriendlyMessage(e);
+                    JOptionPane.showMessageDialog(WeeklyReportPanel.this,
+                        fileType + " 파일 생성 중 오류가 발생했습니다:\n\n" + userMessage,
+                        "오류", JOptionPane.ERROR_MESSAGE);
+                }
+            }
+        };
+        
+        worker.execute();
+        progressDialog.setVisible(true);
     }
     
     /**

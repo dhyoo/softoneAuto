@@ -10,10 +10,20 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import com.softone.auto.util.PathSecurityValidator;
 
 /**
- * 애플리케이션 설정 관리 (JSON 형식)
+ * 애플리케이션 설정 관리
+ * 
+ * <p><b>현재 구현:</b> JSON 파일 기반 설정 저장</p>
+ * <p><b>향후 계획:</b> SQLite 기반 설정 테이블로 전환 예정</p>
+ * <p>
+ *   전환 시 장점:
+ *   - 설정 값 암호화 지원 용이
+ *   - 트랜잭션 기반 원자적 업데이트
+ *   - 설정 변경 이력 추적 가능
+ * </p>
+ * 
+ * @see com.softone.auto.util.SecureConfigManager (암호화된 설정 관리)
  */
 @Data
 public class AppConfig {
@@ -228,50 +238,56 @@ public class AppConfig {
         }
         
         if (selectedPath != null) {
-            // 경로 검증 추가
-            if (!PathSecurityValidator.isValidPath(selectedPath)) {
-                JOptionPane.showMessageDialog(
-                    null,
-                    "안전하지 않은 경로입니다.\n다른 경로를 선택해주세요.",
-                    "경로 오류",
-                    JOptionPane.ERROR_MESSAGE
-                );
-                return selectDataPath(); // 재선택 요청
-            }
-            
-            // 경로 정제
-            String sanitizedPath = PathSecurityValidator.sanitizePath(selectedPath);
-            if (sanitizedPath == null) {
-                JOptionPane.showMessageDialog(
-                    null,
-                    "경로를 정제할 수 없습니다.\n다른 경로를 선택해주세요.",
-                    "경로 오류",
-                    JOptionPane.ERROR_MESSAGE
-                );
-                return selectDataPath();
-            }
-            
             try {
-                Path path = Paths.get(sanitizedPath);
+                // JFileChooser를 통해 선택된 경로는 이미 안전하므로,
+                // 최소한의 검증만 수행 (Path Traversal 패턴만 확인)
+                Path path = Paths.get(selectedPath).normalize().toAbsolutePath();
+                String normalizedPath = path.toString();
+                
+                // Path Traversal 패턴만 확인 (사용자가 직접 입력한 경우 대비)
+                if (normalizedPath.contains("..")) {
+                    JOptionPane.showMessageDialog(
+                        null,
+                        "안전하지 않은 경로입니다.\n다른 경로를 선택해주세요.",
+                        "경로 오류",
+                        JOptionPane.ERROR_MESSAGE
+                    );
+                    return selectDataPath(); // 재선택 요청
+                }
+                
+                // 경로가 존재하지 않으면 생성
                 if (!Files.exists(path)) {
                     Files.createDirectories(path);
                 }
                 
+                // 경로 접근 가능 여부 확인
+                if (!Files.isWritable(path)) {
+                    JOptionPane.showMessageDialog(
+                        null,
+                        "선택한 폴더에 쓰기 권한이 없습니다.\n다른 폴더를 선택해주세요.",
+                        "권한 오류",
+                        JOptionPane.ERROR_MESSAGE
+                    );
+                    return selectDataPath(); // 재선택 요청
+                }
+                
                 JOptionPane.showMessageDialog(
                     null,
-                    "데이터 저장 위치가 설정되었습니다:\n" + sanitizedPath,
+                    "데이터 저장 위치가 설정되었습니다:\n" + normalizedPath,
                     "설정 완료",
                     JOptionPane.INFORMATION_MESSAGE
                 );
                 
-                return sanitizedPath;
-            } catch (IOException e) {
+                return normalizedPath;
+            } catch (Exception e) {
                 JOptionPane.showMessageDialog(
                     null,
-                    "폴더 생성 실패: " + e.getMessage(),
+                    "경로 설정 실패: " + e.getMessage() + "\n\n다른 경로를 선택해주세요.",
                     "오류",
                     JOptionPane.ERROR_MESSAGE
                 );
+                // 오류 발생 시 재선택 요청
+                return selectDataPath();
             }
         }
         

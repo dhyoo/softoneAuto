@@ -4,6 +4,7 @@ import com.softone.auto.model.Attendance;
 import com.softone.auto.model.Developer;
 import com.softone.auto.service.AttendanceService;
 import com.softone.auto.service.DeveloperService;
+import com.softone.auto.util.AsyncDataLoader;
 import com.softone.auto.util.ErrorMessageMapper;
 
 import javax.swing.*;
@@ -84,24 +85,42 @@ public class AttendancePanel extends JPanel {
         
         // 중앙: 분할 패널
         JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
-        splitPane.setResizeWeight(0.5);
+        splitPane.setResizeWeight(0.0);  // 좌측 목록 크기 고정 (0.0 = 좌측 고정, 1.0 = 우측 고정)
         splitPane.setBorder(null);
         splitPane.setDividerSize(5);
         splitPane.setContinuousLayout(true);
         splitPane.setOneTouchExpandable(true);
         
         // 왼쪽: 테이블
-        splitPane.setLeftComponent(createTablePanel());
+        JPanel tablePanel = createTablePanel();
+        tablePanel.setPreferredSize(new Dimension(400, 0));
+        tablePanel.setMinimumSize(new Dimension(400, 0));
+        tablePanel.setMaximumSize(new Dimension(400, Integer.MAX_VALUE));
+        splitPane.setLeftComponent(tablePanel);
         
         // 오른쪽: 입력 폼
         splitPane.setRightComponent(createFormPanel());
+        
+        // 초기 divider 위치 설정 (컴포넌트가 표시된 후에 설정)
+        SwingUtilities.invokeLater(() -> {
+            splitPane.setDividerLocation(400);  // 좌측 목록을 400px로 고정
+        });
         
         mainPanel.add(splitPane, BorderLayout.CENTER);
         
         add(mainPanel);
         
-        // 패널이 표시될 때마다 개발자 목록 새로고침
+        // 창 크기 변경 및 표시 이벤트 처리
         addComponentListener(new java.awt.event.ComponentAdapter() {
+            @Override
+            public void componentResized(java.awt.event.ComponentEvent e) {
+                SwingUtilities.invokeLater(() -> {
+                    if (splitPane.getDividerLocation() != 400) {
+                        splitPane.setDividerLocation(400);
+                    }
+                });
+            }
+            
             @Override
             public void componentShown(java.awt.event.ComponentEvent e) {
                 loadDevelopers();
@@ -466,46 +485,42 @@ public class AttendancePanel extends JPanel {
     }
     
     /**
-     * 근태 목록 로드
+     * 근태 목록 로드 (비동기 처리)
      */
     private void loadAttendances() {
-        // EDT에서 실행되도록 보장
-        if (SwingUtilities.isEventDispatchThread()) {
-            loadAttendancesInternal();
-        } else {
-            SwingUtilities.invokeLater(() -> loadAttendancesInternal());
-        }
-    }
-    
-    /**
-     * 근태 목록 로드 (내부 메서드 - EDT에서 실행)
-     */
-    private void loadAttendancesInternal() {
-        try {
-            System.out.println("=== 근태 목록 로드 시작 ===");
-            
-            // 개발자 목록도 함께 새로고침
-            loadDevelopers();
-            
-            // 테이블 모델 초기화
-            tableModel.setRowCount(0);
-            
-            // 데이터 조회
-            List<Attendance> attendances = attendanceService.getAllAttendance();
-            System.out.println("  조회된 근태 데이터: " + attendances.size() + "건");
-            
-            // 현재 회사 정보 출력
-            com.softone.auto.model.Company currentCompany = com.softone.auto.util.AppContext.getInstance().getCurrentCompany();
-            System.out.println("  현재 회사: " + (currentCompany != null ? currentCompany.getName() + " (ID: " + currentCompany.getId() + ")" : "없음"));
-            
-            if (attendances.isEmpty()) {
-                System.out.println("  ⚠️ 근태 데이터가 없습니다.");
-            } else {
-                int rowCount = 0;
-                for (Attendance att : attendances) {
-                    try {
-                        // 회사 ID 확인
-                        System.out.println("    - 근태: 날짜=" + att.getDate() + ", 개발자=" + att.getDeveloperName() + ", 회사ID=" + att.getCompanyId());
+        AsyncDataLoader.loadAsync(
+            () -> {
+                // 백그라운드 스레드에서 실행
+                System.out.println("=== 근태 목록 로드 시작 (비동기) ===");
+                List<Attendance> attendances = attendanceService.getAllAttendance();
+                System.out.println("  조회된 근태 데이터: " + attendances.size() + "건");
+                return attendances;
+            },
+            (attendances) -> {
+                // EDT에서 실행 - UI 업데이트
+                if (attendances == null) {
+                    System.err.println("근태 데이터 로드 실패");
+                    return;
+                }
+                
+                // 개발자 목록도 함께 새로고침
+                loadDevelopers();
+                
+                // 테이블 모델 초기화
+                tableModel.setRowCount(0);
+                
+                // 현재 회사 정보 출력
+                com.softone.auto.model.Company currentCompany = com.softone.auto.util.AppContext.getInstance().getCurrentCompany();
+                System.out.println("  현재 회사: " + (currentCompany != null ? currentCompany.getName() + " (ID: " + currentCompany.getId() + ")" : "없음"));
+                
+                if (attendances.isEmpty()) {
+                    System.out.println("  ⚠️ 근태 데이터가 없습니다.");
+                } else {
+                    int rowCount = 0;
+                    for (Attendance att : attendances) {
+                        try {
+                            // 회사 ID 확인
+                            System.out.println("    - 근태: 날짜=" + att.getDate() + ", 개발자=" + att.getDeveloperName() + ", 회사ID=" + att.getCompanyId());
                         
                         tableModel.addRow(new Object[]{
                                 att.getDate() != null ? att.getDate().format(DateTimeFormatter.ISO_LOCAL_DATE) : "",
@@ -523,8 +538,9 @@ public class AttendancePanel extends JPanel {
                         System.err.println("    - 개발자: " + att.getDeveloperName());
                         rowEx.printStackTrace();
                     }
+                    }
+                    System.out.println("  ✓ 테이블에 추가된 행: " + rowCount + "건");
                 }
-                System.out.println("  ✓ 테이블에 추가된 행: " + rowCount + "건");
                 
                 // 테이블 모델 갱신
                 tableModel.fireTableDataChanged();
@@ -539,19 +555,10 @@ public class AttendancePanel extends JPanel {
                         System.err.println("  ✗ 행 선택 실패: " + selectEx.getMessage());
                     }
                 }
+                
+                System.out.println("=== 근태 목록 로드 완료 ===\n");
             }
-            System.out.println("=== 근태 목록 로드 완료 ===\n");
-        } catch (Exception e) {
-            System.err.println("✗ 근태 목록 로드 오류: " + e.getMessage());
-            e.printStackTrace();
-            
-            // 사용자에게 오류 알림
-            JOptionPane.showMessageDialog(this,
-                "근태 목록을 불러오는 중 오류가 발생했습니다:\n\n" +
-                ErrorMessageMapper.getUserFriendlyMessage(e),
-                "오류",
-                JOptionPane.ERROR_MESSAGE);
-        }
+        );
     }
     
     /**

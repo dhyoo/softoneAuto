@@ -12,30 +12,30 @@ repositories {
 }
 
 dependencies {
-    // Lombok
-    compileOnly 'org.projectlombok:lombok:1.18.30'
-    annotationProcessor 'org.projectlombok:lombok:1.18.30'
+    // Lombok - 최신 안정 버전
+    compileOnly 'org.projectlombok:lombok:1.18.34'
+    annotationProcessor 'org.projectlombok:lombok:1.18.34'
     
-    // Excel 처리 (Apache POI)
-    implementation 'org.apache.poi:poi:5.2.5'
-    implementation 'org.apache.poi:poi-ooxml:5.2.5'
+    // Excel 처리 (Apache POI) - 최신 안정 버전
+    implementation 'org.apache.poi:poi:5.3.0'
+    implementation 'org.apache.poi:poi-ooxml:5.3.0'
     
-    // PDF 생성 (iText)
+    // PDF 생성 (iText) - 최신 안정 버전
     implementation 'com.itextpdf:itextpdf:5.5.13.3'
     implementation 'com.itextpdf:itext-asian:5.2.0'
     
     // JSON 처리 (마이그레이션용 - 향후 제거 예정)
-    implementation 'com.google.code.gson:gson:2.10.1'
+    implementation 'com.google.code.gson:gson:2.11.0'
     
-    // SQLite JDBC 드라이버
-    implementation 'org.xerial:sqlite-jdbc:3.44.1.0'
+    // SQLite JDBC 드라이버 - 최신 버전
+    implementation 'org.xerial:sqlite-jdbc:3.46.1.0'
     
-    // 로깅
-    implementation 'org.slf4j:slf4j-api:2.0.9'
-    implementation 'ch.qos.logback:logback-classic:1.4.11'
+    // 로깅 - 최신 안정 버전
+    implementation 'org.slf4j:slf4j-api:2.0.13'
+    implementation 'ch.qos.logback:logback-classic:1.5.8'
     
-    // 테스트
-    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.0'
+    // 테스트 - 최신 안정 버전
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.11.0'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
@@ -104,7 +104,162 @@ task viewDb(type: JavaExec) {
     }
 }
 
+// 커스텀 JRE 생성 (jlink 사용 - 용량 최적화)
+task createCustomJre {
+    group = 'distribution'
+    description = '커스텀 JRE 생성 (필요한 모듈만 포함)'
+    
+    def jreDir = file("${buildDir}/jre")
+    
+    doFirst {
+        // jlink가 설치되어 있는지 확인
+        def result = exec {
+            commandLine 'jlink', '--version'
+            ignoreExitValue = true
+            standardOutput = new ByteArrayOutputStream()
+            errorOutput = new ByteArrayOutputStream()
+        }
+        if (result.exitValue != 0) {
+            throw new GradleException('jlink를 찾을 수 없습니다. JDK 14 이상이 필요합니다.')
+        }
+    }
+    
+    doLast {
+        // 기존 JRE 삭제
+        if (jreDir.exists()) {
+            delete jreDir
+        }
+        
+        // 필요한 모듈만 포함하는 커스텀 JRE 생성
+        def modules = [
+            'java.base',
+            'java.desktop',
+            'java.sql',
+            'java.logging',
+            'java.xml',
+            'java.management',
+            'java.naming',
+            'jdk.unsupported',
+            'jdk.charsets',
+            'jdk.crypto.ec',
+            'jdk.localedata'
+        ].join(',')
+        
+        exec {
+            commandLine 'jlink',
+                '--add-modules', modules,
+                '--strip-debug',
+                '--no-header-files',
+                '--no-man-pages',
+                '--compress', 'zip-6',  // ZIP 압축 (용량 최적화)
+                '--output', jreDir.absolutePath
+        }
+        
+        println "커스텀 JRE 생성 완료: ${jreDir.absolutePath}"
+    }
+}
+
+// EXE 파일 생성 (jpackage 사용 - 커스텀 JRE 포함)
+task createExe {
+    group = 'distribution'
+    description = 'Windows EXE 파일 생성 (jpackage 사용, 커스텀 JRE 포함)'
+    
+    dependsOn jar, createCustomJre
+    
+    doFirst {
+        // jpackage가 설치되어 있는지 확인
+        def result = exec {
+            commandLine 'jpackage', '--version'
+            ignoreExitValue = true
+            standardOutput = new ByteArrayOutputStream()
+            errorOutput = new ByteArrayOutputStream()
+        }
+        if (result.exitValue != 0) {
+            throw new GradleException('jpackage를 찾을 수 없습니다. JDK 14 이상이 필요합니다.')
+        }
+    }
+    
+    doLast {
+        def jarFile = jar.archiveFile.get().asFile
+        def outputDir = file("${buildDir}/distributions/exe")
+        def jreDir = file("${buildDir}/jre")
+        outputDir.mkdirs()
+        
+        // jpackage 명령어 실행 (커스텀 JRE 사용)
+        exec {
+            commandLine 'jpackage',
+                '--input', "${buildDir}/libs",
+                '--name', 'SoftOneAutoManager',
+                '--main-jar', jarFile.name,
+                '--main-class', application.mainClass.get(),
+                '--type', 'app-image',
+                '--dest', outputDir.absolutePath,
+                '--runtime-image', jreDir.absolutePath,  // 커스텀 JRE 사용
+                '--app-version', project.version,
+                '--description', 'SoftOne Auto Manager - 주간보고서 관리 시스템',
+                '--vendor', 'SoftOne',
+                '--copyright', 'Copyright © 2025 SoftOne',
+                '--java-options', '-Dfile.encoding=UTF-8',
+                '--java-options', '-Dconsole.encoding=UTF-8',
+                '--java-options', '-Dsoftone.app.mode=PRODUCTION'  // 프로덕션 모드로 설정
+        }
+        
+        println "EXE 파일 생성 완료: ${outputDir.absolutePath}/SoftOneAutoManager"
+    }
+}
+
+// EXE 파일 생성 (MSI 인스톨러 포함 - 커스텀 JRE 포함)
+task createInstaller {
+    group = 'distribution'
+    description = 'Windows MSI 인스톨러 생성 (jpackage 사용, 커스텀 JRE 포함)'
+    
+    dependsOn jar, createCustomJre
+    
+    doFirst {
+        def result = exec {
+            commandLine 'jpackage', '--version'
+            ignoreExitValue = true
+            standardOutput = new ByteArrayOutputStream()
+            errorOutput = new ByteArrayOutputStream()
+        }
+        if (result.exitValue != 0) {
+            throw new GradleException('jpackage를 찾을 수 없습니다. JDK 14 이상이 필요합니다.')
+        }
+    }
+    
+    doLast {
+        def jarFile = jar.archiveFile.get().asFile
+        def outputDir = file("${buildDir}/distributions/installer")
+        def jreDir = file("${buildDir}/jre")
+        outputDir.mkdirs()
+        
+        // jpackage 명령어 실행 (MSI 인스톨러, 커스텀 JRE 사용)
+        exec {
+            commandLine 'jpackage',
+                '--input', "${buildDir}/libs",
+                '--name', 'SoftOneAutoManager',
+                '--main-jar', jarFile.name,
+                '--main-class', application.mainClass.get(),
+                '--type', 'msi',
+                '--dest', outputDir.absolutePath,
+                '--runtime-image', jreDir.absolutePath,  // 커스텀 JRE 사용
+                '--app-version', project.version,
+                '--description', 'SoftOne Auto Manager - 주간보고서 관리 시스템',
+                '--vendor', 'SoftOne',
+                '--copyright', 'Copyright © 2025 SoftOne',
+                '--java-options', '-Dfile.encoding=UTF-8',
+                '--java-options', '-Dconsole.encoding=UTF-8',
+                '--java-options', '-Dsoftone.app.mode=PRODUCTION',  // 프로덕션 모드로 설정
+                '--win-dir-chooser',
+                '--win-menu',
+                '--win-shortcut',
+                '--win-upgrade-uuid', java.util.UUID.randomUUID().toString()
+        }
+        
+        println "MSI 인스톨러 생성 완료: ${outputDir.absolutePath}/SoftOneAutoManager-${project.version}.msi"
+    }
+}
+
 tasks.named('test') {
     useJUnitPlatform()
 }
-

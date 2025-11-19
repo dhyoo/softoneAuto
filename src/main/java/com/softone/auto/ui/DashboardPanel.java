@@ -9,6 +9,9 @@ import java.time.format.DateTimeFormatter;
 
 /**
  * 대시보드 패널 - 프로젝트 현황 요약 (모던 디자인)
+ * 
+ * <p>의존성 주입(DI) 패턴을 사용하여 Service 인스턴스를 외부에서 주입받습니다.</p>
+ * <p>이를 통해 테스트 용이성과 결합도 감소를 달성합니다.</p>
  */
 public class DashboardPanel extends JPanel {
     
@@ -17,11 +20,22 @@ public class DashboardPanel extends JPanel {
     private final IssueService issueService;
     private final CustomerCommunicationService communicationService;
     
-    public DashboardPanel() {
-        this.developerService = new DeveloperService();
-        this.attendanceService = new AttendanceService();
-        this.issueService = new IssueService();
-        this.communicationService = new CustomerCommunicationService();
+    /**
+     * 생성자 - 의존성 주입 방식
+     * 
+     * @param developerService 개발자 관리 서비스
+     * @param attendanceService 근태 관리 서비스
+     * @param issueService 이슈 관리 서비스
+     * @param communicationService 고객 소통 관리 서비스
+     */
+    public DashboardPanel(DeveloperService developerService,
+                         AttendanceService attendanceService,
+                         IssueService issueService,
+                         CustomerCommunicationService communicationService) {
+        this.developerService = developerService;
+        this.attendanceService = attendanceService;
+        this.issueService = issueService;
+        this.communicationService = communicationService;
         
         try {
             initializeUI();

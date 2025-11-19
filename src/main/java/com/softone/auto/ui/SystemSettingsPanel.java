@@ -174,6 +174,12 @@ public class SystemSettingsPanel extends JPanel {
         
         mainSplitPane.setRightComponent(rightSplitPane);
         
+        // 초기 divider 위치 설정 (컴포넌트가 표시된 후에 설정)
+        SwingUtilities.invokeLater(() -> {
+            mainSplitPane.setDividerLocation(0.25);  // 좌측 25% 지점
+            rightSplitPane.setDividerLocation(0.5);   // 중앙 50% 지점
+        });
+        
         JPanel contentPanel = new JPanel(new BorderLayout(8, 8));
         contentPanel.setBackground(ModernDesign.BG_SECONDARY);
         contentPanel.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));

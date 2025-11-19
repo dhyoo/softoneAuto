@@ -2,8 +2,11 @@ package com.softone.auto.service;
 
 import com.softone.auto.model.Attendance;
 import com.softone.auto.model.Company;
-import com.softone.auto.repository.AttendanceRepository;
+import com.softone.auto.repository.sqlite.AttendanceSqliteRepository;
 import com.softone.auto.util.AppContext;
+import com.softone.auto.util.AuditLogger;
+import com.softone.auto.util.PrivacyMaskingUtil;
+import lombok.extern.slf4j.Slf4j;
 
 import java.time.Duration;
 import java.time.LocalDate;
@@ -17,12 +20,13 @@ import java.util.stream.Collectors;
 /**
  * 근태 관리 서비스 (회사별 데이터 분리)
  */
+@Slf4j
 public class AttendanceService {
     
-    private final AttendanceRepository repository;
+    private final AttendanceSqliteRepository repository;
     
     public AttendanceService() {
-        this.repository = new AttendanceRepository();
+        this.repository = new AttendanceSqliteRepository();
     }
     
     /**
@@ -41,8 +45,7 @@ public class AttendanceService {
                     .filter(att -> currentCompany.getId().equals(att.getCompanyId()))
                     .collect(Collectors.toList());
         } catch (Exception e) {
-            System.err.println("근태 데이터 조회 오류: " + e.getMessage());
-            e.printStackTrace();
+            log.error("근태 데이터 조회 오류: {}", e.getMessage(), e);
             // 예외 발생 시 빈 리스트 반환 (애플리케이션 시작 방해 방지)
             return new ArrayList<>();
         }
@@ -95,6 +98,13 @@ public class AttendanceService {
         }
         
         repository.save(attendance);
+        
+        // 감사 로그 기록 (개인정보 마스킹)
+        String maskedDeveloperName = PrivacyMaskingUtil.maskName(developerName);
+        log.info("근태 등록 완료 - 개발자: {}, 날짜: {}", maskedDeveloperName, date);
+        AuditLogger.logDataModification("SYSTEM", "CREATE", "Attendance", attendance.getId(), 
+            "개발자: " + maskedDeveloperName + ", 날짜: " + date);
+        
         return attendance;
     }
     
@@ -128,13 +138,23 @@ public class AttendanceService {
             attendance.setWorkMinutes((int) minutes);
         }
         repository.update(attendance);
+        
+        // 감사 로그 기록 (개인정보 마스킹)
+        String maskedDeveloperName = attendance.getDeveloperName() != null ? 
+            PrivacyMaskingUtil.maskName(attendance.getDeveloperName()) : "N/A";
+        log.info("근태 수정 완료 - ID: {}, 개발자: {}, 날짜: {}", 
+            attendance.getId(), maskedDeveloperName, attendance.getDate());
+        AuditLogger.logDataModification("SYSTEM", "UPDATE", "Attendance", attendance.getId(), 
+            "개발자: " + maskedDeveloperName + ", 날짜: " + attendance.getDate());
     }
     
     /**
      * 근태 삭제
      */
     public void deleteAttendance(String id) {
+        log.info("근태 삭제 - ID: {}", id);
         repository.delete(id);
+        AuditLogger.logDataModification("SYSTEM", "DELETE", "Attendance", id, null);
     }
     
     /**

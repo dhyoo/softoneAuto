@@ -398,8 +398,13 @@ public class MainFrame extends JFrame {
             
             // 탭 다시 추가 (에러 발생 시에도 계속 진행)
             try {
-                // 대시보드 패널 재생성 및 참조 저장
-                dashboardPanel = new DashboardPanel();
+                // 대시보드 패널 재생성 및 참조 저장 (ServiceRegistry를 통한 의존성 주입)
+                dashboardPanel = new DashboardPanel(
+                    com.softone.auto.util.ServiceRegistry.getDeveloperService(),
+                    com.softone.auto.util.ServiceRegistry.getAttendanceService(),
+                    com.softone.auto.util.ServiceRegistry.getIssueService(),
+                    com.softone.auto.util.ServiceRegistry.getCustomerCommunicationService()
+                );
                 tabbedPane.addTab("  대시보드  ", createIcon("dashboard"), dashboardPanel, "프로젝트 현황 대시보드");
             } catch (Exception e) {
                 System.err.println("대시보드 패널 생성 오류: " + e.getMessage());
@@ -494,7 +499,13 @@ public class MainFrame extends JFrame {
         // 각 기능별 패널 추가 (에러 발생 시에도 계속 진행)
         try {
             // 대시보드 패널 생성 및 참조 저장
-            dashboardPanel = new DashboardPanel();
+            // ServiceRegistry를 통한 의존성 주입
+            dashboardPanel = new DashboardPanel(
+                com.softone.auto.util.ServiceRegistry.getDeveloperService(),
+                com.softone.auto.util.ServiceRegistry.getAttendanceService(),
+                com.softone.auto.util.ServiceRegistry.getIssueService(),
+                com.softone.auto.util.ServiceRegistry.getCustomerCommunicationService()
+            );
             tabbedPane.addTab("  대시보드  ", createIcon("dashboard"), dashboardPanel, "프로젝트 현황 대시보드");
         } catch (Exception e) {
             System.err.println("대시보드 패널 생성 오류: " + e.getMessage());

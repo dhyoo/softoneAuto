@@ -4,6 +4,9 @@ import com.softone.auto.model.Company;
 import com.softone.auto.model.Developer;
 import com.softone.auto.model.WeeklyReport;
 import com.softone.auto.repository.sqlite.WeeklyReportSqliteRepository;
+import com.softone.auto.util.AuditLogger;
+import com.softone.auto.util.PrivacyMaskingUtil;
+import lombok.extern.slf4j.Slf4j;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -12,6 +15,7 @@ import java.util.UUID;
 /**
  * 주간 보고서 서비스
  */
+@Slf4j
 public class WeeklyReportService {
     
     private final WeeklyReportSqliteRepository repository;
@@ -28,36 +32,28 @@ public class WeeklyReportService {
      * 전체 주간 보고서 목록 조회 (회사별 필터링)
      */
     public List<WeeklyReport> getAllReports() {
-        System.out.println("\n=== WeeklyReportService.getAllReports() 시작 ===");
         try {
             Company currentCompany = com.softone.auto.util.AppContext.getInstance().getCurrentCompany();
-            System.out.println("  현재 회사: " + (currentCompany != null ? currentCompany.getName() + " (ID: " + currentCompany.getId() + ")" : "없음"));
+            String companyName = currentCompany != null ? PrivacyMaskingUtil.maskName(currentCompany.getName()) : "없음";
+            log.debug("주간보고서 목록 조회 시작 - 회사: {}", companyName);
             
             List<WeeklyReport> allReports;
             if (currentCompany != null) {
                 // 회사별 필터링은 SQLite에서 직접 처리
                 allReports = repository.findByCompanyId(currentCompany.getId());
-                System.out.println("  회사별 보고서: " + allReports.size() + "건");
+                log.debug("회사별 보고서: {}건", allReports.size());
             } else {
                 // 전체 조회
                 allReports = repository.findAll();
-                System.out.println("  전체 보고서: " + allReports.size() + "건");
+                log.debug("전체 보고서: {}건", allReports.size());
             }
             
-            // 각 보고서의 회사 ID 출력
-            if (!allReports.isEmpty()) {
-                System.out.println("  보고서별 회사 ID:");
-                for (WeeklyReport report : allReports) {
-                    System.out.println("    - " + report.getStartDate() + " (회사ID: " + report.getCompanyId() + ", 제목: " + report.getTitle() + ")");
-                }
-            }
+            log.debug("주간보고서 목록 조회 완료 - 회사: {}, 조회된 보고서 수: {}건", companyName, allReports.size());
+            AuditLogger.logDataAccess("SYSTEM", "READ", "WeeklyReport", String.valueOf(allReports.size()));
             
-            System.out.println("=== getAllReports() 완료 ===\n");
             return allReports;
         } catch (Exception e) {
-            System.err.println("  ✗ 주간보고서 데이터 조회 오류: " + e.getMessage());
-            e.printStackTrace();
-            System.out.println("=== getAllReports() 오류 발생 ===\n");
+            log.error("주간보고서 데이터 조회 오류: {}", e.getMessage(), e);
             return new java.util.ArrayList<>();
         }
     }
@@ -87,6 +83,15 @@ public class WeeklyReportService {
         generateAttendanceSummaries(report, startDate, endDate);
         
         repository.save(report);
+        
+        // 감사 로그 기록 (개인정보 마스킹)
+        String maskedReporter = PrivacyMaskingUtil.maskName(reporter);
+        String maskedProjectName = PrivacyMaskingUtil.maskName(projectName);
+        log.info("주간보고서 생성 완료 - 제목: {}, 작성자: {}, 프로젝트: {}", 
+            title, maskedReporter, maskedProjectName);
+        AuditLogger.logDataModification("SYSTEM", "CREATE", "WeeklyReport", report.getId(), 
+            "제목: " + title + ", 작성자: " + maskedReporter);
+        
         return report;
     }
     
@@ -94,14 +99,24 @@ public class WeeklyReportService {
      * 주간 보고서 수정
      */
     public void updateReport(WeeklyReport report) {
+        String maskedReporter = report.getReporter() != null ? 
+            PrivacyMaskingUtil.maskName(report.getReporter()) : "N/A";
+        log.info("주간보고서 수정 완료 - ID: {}, 제목: {}, 작성자: {}", 
+            report.getId(), report.getTitle(), maskedReporter);
+        
         repository.update(report);
+        
+        AuditLogger.logDataModification("SYSTEM", "UPDATE", "WeeklyReport", report.getId(), 
+            "제목: " + report.getTitle() + ", 작성자: " + maskedReporter);
     }
     
     /**
      * 주간 보고서 삭제
      */
     public void deleteReport(String id) {
+        log.info("주간보고서 삭제 - ID: {}", id);
         repository.delete(id);
+        AuditLogger.logDataModification("SYSTEM", "DELETE", "WeeklyReport", id, null);
     }
     
     /**

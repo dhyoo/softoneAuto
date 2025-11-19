@@ -3,7 +3,6 @@ package com.softone.auto.repository.sqlite;
 import com.softone.auto.model.Company;
 import lombok.extern.slf4j.Slf4j;
 
-import java.io.File;
 import java.sql.*;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
@@ -23,8 +22,8 @@ public class CompanySqliteRepository {
     
     public CompanySqliteRepository() {
         try {
-            // 공유 Connection 사용
-            this.connection = SqliteConnectionManager.getInstance().getConnection();
+            // Connection Pool 사용 (읽기는 Pool, 쓰기는 단일 연결)
+            this.connection = SqliteConnectionPool.getInstance().getWriteConnection();
             
             createTable();
             checkIntegrity();
@@ -347,8 +346,8 @@ public class CompanySqliteRepository {
      * 연결 종료
      */
     public void close() {
-        // 공유 Connection은 SqliteConnectionManager가 관리하므로 여기서 닫지 않음
-        // 필요시 SqliteConnectionManager.getInstance().close() 호출
+        // Connection은 SqliteConnectionPool이 관리하므로 여기서 닫지 않음
+        // 필요시 SqliteConnectionPool.getInstance().closeAllConnections() 호출
     }
 }
 

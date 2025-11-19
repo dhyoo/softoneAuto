@@ -2,8 +2,11 @@ package com.softone.auto.service;
 
 import com.softone.auto.model.Company;
 import com.softone.auto.model.CustomerCommunication;
-import com.softone.auto.repository.CustomerCommunicationRepository;
+import com.softone.auto.repository.sqlite.CustomerCommunicationSqliteRepository;
 import com.softone.auto.util.AppContext;
+import com.softone.auto.util.AuditLogger;
+import com.softone.auto.util.PrivacyMaskingUtil;
+import lombok.extern.slf4j.Slf4j;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -13,12 +16,13 @@ import java.util.stream.Collectors;
 /**
  * 고객 소통 관리 서비스 (회사별 데이터 분리)
  */
+@Slf4j
 public class CustomerCommunicationService {
     
-    private final CustomerCommunicationRepository repository;
+    private final CustomerCommunicationSqliteRepository repository;
     
     public CustomerCommunicationService() {
-        this.repository = new CustomerCommunicationRepository();
+        this.repository = new CustomerCommunicationSqliteRepository();
     }
     
     /**
@@ -37,8 +41,7 @@ public class CustomerCommunicationService {
                     .filter(comm -> currentCompany.getId().equals(comm.getCompanyId()))
                     .collect(Collectors.toList());
         } catch (Exception e) {
-            System.err.println("고객 소통 데이터 조회 오류: " + e.getMessage());
-            e.printStackTrace();
+            log.error("고객 소통 데이터 조회 오류: {}", e.getMessage(), e);
             return new java.util.ArrayList<>();
         }
     }
@@ -72,6 +75,15 @@ public class CustomerCommunicationService {
         communication.setNotes(notes);
         
         repository.save(communication);
+        
+        // 감사 로그 기록 (개인정보 마스킹)
+        String maskedCustomerName = PrivacyMaskingUtil.maskName(customerName);
+        String maskedRepresentative = PrivacyMaskingUtil.maskName(ourRepresentative);
+        log.info("고객 소통 등록 완료 - 고객사: {}, 담당자: {}, 제목: {}", 
+            maskedCustomerName, maskedRepresentative, title);
+        AuditLogger.logDataModification("SYSTEM", "CREATE", "CustomerCommunication", communication.getId(), 
+            "고객사: " + maskedCustomerName + ", 담당자: " + maskedRepresentative);
+        
         return communication;
     }
     
@@ -85,13 +97,23 @@ public class CustomerCommunicationService {
         }
         
         repository.update(communication);
+        
+        // 감사 로그 기록
+        String maskedCustomerName = communication.getCustomerName() != null ? 
+            PrivacyMaskingUtil.maskName(communication.getCustomerName()) : "N/A";
+        log.info("고객 소통 수정 완료 - ID: {}, 고객사: {}, 상태: {}", 
+            communication.getId(), maskedCustomerName, communication.getStatus());
+        AuditLogger.logDataModification("SYSTEM", "UPDATE", "CustomerCommunication", communication.getId(), 
+            "고객사: " + maskedCustomerName + ", 상태: " + communication.getStatus());
     }
     
     /**
      * 소통 기록 삭제
      */
     public void deleteCommunication(String id) {
+        log.info("고객 소통 삭제 - ID: {}", id);
         repository.delete(id);
+        AuditLogger.logDataModification("SYSTEM", "DELETE", "CustomerCommunication", id, null);
     }
     
     /**

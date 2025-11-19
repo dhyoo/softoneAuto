@@ -1,6 +1,6 @@
 package com.softone.auto.util;
 
-import com.softone.auto.repository.*;
+// Deprecated repository 패키지 제거됨 - 직접 SqliteRepository 사용
 import com.softone.auto.service.*;
 import java.io.File;
 import java.nio.file.Files;

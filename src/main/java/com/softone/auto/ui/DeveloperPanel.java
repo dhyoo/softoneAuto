@@ -2,12 +2,14 @@ package com.softone.auto.ui;
 
 import com.softone.auto.model.Developer;
 import com.softone.auto.service.DeveloperService;
+import com.softone.auto.util.AsyncDataLoader;
 
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
 
 /**
  * 개발자 관리 패널 - 모던 디자인
@@ -65,15 +67,36 @@ public class DeveloperPanel extends JPanel {
         
         // 중앙: 분할 패널
         JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
-        splitPane.setResizeWeight(0.65);
+        splitPane.setResizeWeight(0.0);  // 좌측 목록 크기 고정 (0.0 = 좌측 고정, 1.0 = 우측 고정)
         splitPane.setBorder(null);
         splitPane.setDividerSize(5);
         
         // 왼쪽: 테이블
-        splitPane.setLeftComponent(createTablePanel());
+        JPanel tablePanel = createTablePanel();
+        tablePanel.setPreferredSize(new Dimension(500, 0));
+        tablePanel.setMinimumSize(new Dimension(500, 0));
+        tablePanel.setMaximumSize(new Dimension(500, Integer.MAX_VALUE));
+        splitPane.setLeftComponent(tablePanel);
         
         // 오른쪽: 입력 폼
         splitPane.setRightComponent(createFormPanel());
+        
+        // 초기 divider 위치 설정 (컴포넌트가 표시된 후에 설정)
+        SwingUtilities.invokeLater(() -> {
+            splitPane.setDividerLocation(500);  // 좌측 목록을 500px로 고정 (개발자 목록이 더 넓음)
+        });
+        
+        // 창 크기 변경 시 divider 위치 유지
+        addComponentListener(new java.awt.event.ComponentAdapter() {
+            @Override
+            public void componentResized(java.awt.event.ComponentEvent e) {
+                SwingUtilities.invokeLater(() -> {
+                    if (splitPane.getDividerLocation() != 500) {
+                        splitPane.setDividerLocation(500);
+                    }
+                });
+            }
+        });
         
         mainPanel.add(splitPane, BorderLayout.CENTER);
         
@@ -381,35 +404,51 @@ public class DeveloperPanel extends JPanel {
     }
     
     /**
-     * 개발자 목록 로드
+     * 개발자 목록 로드 (비동기 처리)
      */
     private void loadDevelopers() {
-        try {
-            tableModel.setRowCount(0);
-            for (Developer dev : developerService.getAllDevelopers()) {
-                Object[] row = new Object[]{
-                    dev.getName(),
-                    dev.getPosition(),
-                    dev.getRole(),
-                    dev.getTeam(),
-                    getStatusBadge(dev.getStatus()),
-                    dev.getJoinDate() != null ? dev.getJoinDate().format(DateTimeFormatter.ISO_LOCAL_DATE) : ""
-                };
-                tableModel.addRow(row);
+        AsyncDataLoader.loadAsync(
+            () -> {
+                // 백그라운드 스레드에서 실행
+                System.out.println("=== 개발자 목록 로드 시작 (비동기) ===");
+                List<Developer> developers = developerService.getAllDevelopers();
+                System.out.println("  조회된 개발자 데이터: " + developers.size() + "건");
+                return developers;
+            },
+            (developers) -> {
+                // EDT에서 실행 - UI 업데이트
+                if (developers == null) {
+                    System.err.println("개발자 데이터 로드 실패");
+                    return;
+                }
+                
+                try {
+                    tableModel.setRowCount(0);
+                    for (Developer dev : developers) {
+                        Object[] row = new Object[]{
+                            dev.getName(),
+                            dev.getPosition(),
+                            dev.getRole(),
+                            dev.getTeam(),
+                            getStatusBadge(dev.getStatus()),
+                            dev.getJoinDate() != null ? dev.getJoinDate().format(DateTimeFormatter.ISO_LOCAL_DATE) : ""
+                        };
+                        tableModel.addRow(row);
+                    }
+                    
+                    // 첫 번째 행 자동 선택
+                    if (tableModel.getRowCount() > 0) {
+                        developerTable.setRowSelectionInterval(0, 0);
+                        developerTable.scrollRectToVisible(developerTable.getCellRect(0, 0, true));
+                    }
+                    
+                    System.out.println("=== 개발자 목록 로드 완료 ===\n");
+                } catch (Exception e) {
+                    System.err.println("개발자 목록 UI 업데이트 오류: " + e.getMessage());
+                    e.printStackTrace();
+                }
             }
-            
-            // 첫 번째 행 자동 선택
-            if (tableModel.getRowCount() > 0) {
-                SwingUtilities.invokeLater(() -> {
-                    developerTable.setRowSelectionInterval(0, 0);
-                    developerTable.scrollRectToVisible(developerTable.getCellRect(0, 0, true));
-                });
-            }
-        } catch (Exception e) {
-            System.err.println("개발자 목록 로드 오류: " + e.getMessage());
-            e.printStackTrace();
-            // 에러가 발생해도 UI는 표시되도록 함
-        }
+        );
     }
     
     /**

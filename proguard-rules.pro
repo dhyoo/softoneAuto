@@ -18,21 +18,29 @@
 -printseeds seeds.txt
 -printusage usage.txt
 
-# 난독화 옵션
+# 난독화 옵션 (최대 강도)
 -obfuscate
--optimizationpasses 5
+-optimizationpasses 9
 -allowaccessmodification
 -mergeinterfacesaggressively
+-overloadaggressively
+-useuniqueclassmembernames
 
 # 클래스 이름 난독화 (짧은 이름 사용)
 -repackageclasses 'o'
 -allowaccessmodification
+-flattenpackagehierarchy 'o'
 
-# 최적화 옵션
+# 최적화 옵션 (성능 향상)
 -optimizations !code/simplification/arithmetic,!code/simplification/cast,!field/*,!class/merging/*
 
-# 코드 축소 (사용하지 않는 코드 제거)
+# 코드 축소 및 최적화
 -dontshrink
+-optimizeaggressively
+
+# 문자열 암호화 (선택적 - 성능 영향 있음)
+# -adaptclassstrings
+# -adaptresourcefilenames
 
 # 주의: 리플렉션 사용 클래스는 보호해야 함
 
@@ -101,12 +109,26 @@
 # 예외 클래스 보호
 -keep public class * extends java.lang.Exception
 
-# 애플리케이션 패키지 난독화 (선택사항)
-# -keep class com.softone.auto.ui.** { *; }  # UI 클래스는 보호 (디버깅 용이)
-# -keep class com.softone.auto.util.** { *; }  # 유틸리티 클래스는 보호
+# 애플리케이션 패키지 난독화 (최대 강도 적용)
+# UI 클래스는 난독화하되 메서드 시그니처는 유지
+-keep,allowobfuscation class com.softone.auto.ui.** {
+    public <methods>;
+}
 
-# 암호화 관련 클래스는 보호하지 않음 (난독화 대상)
-# -keep class com.softone.auto.util.SecureConfigManager { *; }  # 주석 처리하여 난독화
+# 유틸리티 클래스 난독화 (보안 강화)
+-keep,allowobfuscation class com.softone.auto.util.** {
+    public <methods>;
+}
+
+# 암호화 관련 클래스 난독화 (보안 강화)
+-keep,allowobfuscation class com.softone.auto.util.SecureConfigManager {
+    public static <methods>;
+}
+
+# 리플렉션 사용 클래스 보호 (필수)
+-keepclassmembers class * {
+    @javax.swing.* <methods>;
+}
 
 # 경고 억제
 -dontwarn javax.annotation.**

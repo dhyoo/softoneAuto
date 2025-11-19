@@ -4,7 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.reflect.TypeToken;
 import com.softone.auto.model.*;
-import com.softone.auto.repository.*;
+// Deprecated repository 패키지 제거됨 - 직접 SqliteRepository 사용
 import com.softone.auto.repository.sqlite.*;
 import com.softone.auto.repository.sqlite.IssueSqliteRepository;
 import com.softone.auto.repository.sqlite.CustomerCommunicationSqliteRepository;
@@ -22,6 +22,14 @@ import java.util.List;
 
 /**
  * JSON 데이터를 SQLite로 마이그레이션하는 유틸리티
+ * 
+ * <p><b>주의:</b> 이 클래스는 일회성/관리자용 마이그레이션 도구입니다.</p>
+ * <p>일반적인 애플리케이션 실행 시에는 사용되지 않으며,</p>
+ * <p>기존 JSON 데이터를 SQLite로 전환할 때만 사용됩니다.</p>
+ * 
+ * <p>마이그레이션 완료 후에는 이 클래스를 사용할 필요가 없습니다.</p>
+ * 
+ * @deprecated 마이그레이션 완료 후 제거 예정 (선택적)
  */
 @Slf4j
 public class JsonToSqliteMigrator {
@@ -30,9 +38,9 @@ public class JsonToSqliteMigrator {
     
     public JsonToSqliteMigrator() {
         this.gson = new GsonBuilder()
-                .registerTypeAdapter(LocalDate.class, new com.softone.auto.repository.LocalDateAdapter())
-                .registerTypeAdapter(LocalDateTime.class, new com.softone.auto.repository.LocalDateTimeAdapter())
-                .registerTypeAdapter(LocalTime.class, new com.softone.auto.repository.LocalTimeAdapter())
+                .registerTypeAdapter(LocalDate.class, new com.softone.auto.repository.legacy.LocalDateAdapter())
+                .registerTypeAdapter(LocalDateTime.class, new com.softone.auto.repository.legacy.LocalDateTimeAdapter())
+                .registerTypeAdapter(LocalTime.class, new com.softone.auto.repository.legacy.LocalTimeAdapter())
                 .create();
     }
     

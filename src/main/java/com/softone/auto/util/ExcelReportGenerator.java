@@ -3,10 +3,11 @@ package com.softone.auto.util;
 import com.softone.auto.model.WeeklyReport;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.ss.util.CellRangeAddress;
-import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.apache.poi.xssf.streaming.SXSSFWorkbook;
 
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 
@@ -22,26 +23,32 @@ public class ExcelReportGenerator {
      */
     public static String generateWeeklyReport(WeeklyReport report) {
         try {
-            // DataPathManager를 통해 설정된 경로 사용
-            String dataPath = com.softone.auto.util.DataPathManager.getDataPath();
-            String reportsDir = dataPath + java.io.File.separator + "reports" + java.io.File.separator + "excel";
+            // AppConfig를 통해 설정된 경로 사용
+            String dataPath = com.softone.auto.util.AppConfig.getInstance().getOrSelectDataPath();
             
-            // 디렉토리 생성
-            File dir = new File(reportsDir);
-            if (!dir.exists()) {
-                dir.mkdirs();
-                System.out.println("Excel 디렉토리 생성: " + dir.getAbsolutePath());
+            // reports 디렉토리는 dataPath 하위에 생성
+            // 예: C:\Users\...\SoftOneAutoData\reports\excel
+            File dataPathFile = new File(dataPath).getAbsoluteFile();
+            File reportsDir = new File(dataPathFile, "reports" + File.separator + "excel");
+            
+            // 디렉토리가 없으면 생성
+            if (!reportsDir.exists()) {
+                if (!reportsDir.mkdirs()) {
+                    throw new IOException("reports 디렉토리 생성 실패: " + reportsDir.getAbsolutePath());
+                }
             }
             
-            Workbook workbook = new XSSFWorkbook();
+            // SXSSFWorkbook 사용 (스트리밍 방식, 메모리 효율적)
+            // 100행씩 메모리에 유지, 나머지는 임시 파일에 저장
+            Workbook workbook = new SXSSFWorkbook(100);
             Sheet sheet = workbook.createSheet("주간보고서");
             
-            // 스타일 생성
-            CellStyle titleStyle = createTitleStyle(workbook);
-            CellStyle headerStyle = createHeaderStyle(workbook);
-            CellStyle labelStyle = createLabelStyle(workbook);
-            CellStyle contentStyle = createContentStyle(workbook);
-            CellStyle sectionHeaderStyle = createSectionHeaderStyle(workbook);
+            // 스타일 생성 (캐싱 사용)
+            CellStyle titleStyle = ExcelStyleCache.getTitleStyle(workbook);
+            CellStyle headerStyle = ExcelStyleCache.getHeaderStyle(workbook);
+            CellStyle labelStyle = ExcelStyleCache.getLabelStyle(workbook);
+            CellStyle contentStyle = ExcelStyleCache.getContentStyle(workbook);
+            CellStyle sectionHeaderStyle = ExcelStyleCache.getSectionHeaderStyle(workbook);
             
             int rowNum = 0;
             
@@ -190,14 +197,28 @@ public class ExcelReportGenerator {
             
             // 파일 저장 (날짜와 시간 포함: yyyyMMddHHmm)
             String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmm"));
-            String fileName = String.format("%s/주간보고서_%s.xlsx", reportsDir, timestamp);
+            String fileName = new File(reportsDir, "주간보고서_" + timestamp + ".xlsx").getAbsolutePath();
+            
+            // 파일명 검증 (Path Traversal 방지)
+            File file = new File(fileName);
+            if (!file.getCanonicalPath().startsWith(reportsDir.getCanonicalPath())) {
+                throw new SecurityException("안전하지 않은 파일 경로입니다.");
+            }
             
             try (FileOutputStream fileOut = new FileOutputStream(fileName)) {
                 workbook.write(fileOut);
-                workbook.close();
                 System.out.println("주간보고서 Excel 파일 생성 완료: " + fileName);
-                return fileName;
+            } finally {
+                // SXSSFWorkbook의 임시 파일 정리
+                if (workbook instanceof SXSSFWorkbook) {
+                    ((SXSSFWorkbook) workbook).dispose();
+                }
+                workbook.close();
+                // 스타일 캐시 정리
+                ExcelStyleCache.clearCache(workbook);
             }
+            
+            return fileName;
             
         } catch (Exception e) {
             System.err.println("주간보고서 Excel 생성 실패: " + e.getMessage());

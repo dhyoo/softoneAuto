@@ -6,6 +6,7 @@ import com.softone.auto.model.WeeklyReport;
 
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 
@@ -70,20 +71,36 @@ public class PdfReportGenerator {
      */
     public static String generateWeeklyReport(WeeklyReport report) {
         try {
-            // DataPathManager를 통해 설정된 경로 사용
-            String dataPath = com.softone.auto.util.DataPathManager.getDataPath();
-            String reportsDir = dataPath + java.io.File.separator + "reports" + java.io.File.separator + "pdf";
+            // AppConfig를 통해 설정된 경로 사용
+            String dataPath = com.softone.auto.util.AppConfig.getInstance().getOrSelectDataPath();
             
-            // 디렉토리 생성
-            File dir = new File(reportsDir);
-            if (!dir.exists()) {
-                dir.mkdirs();
-                System.out.println("PDF 디렉토리 생성: " + dir.getAbsolutePath());
+            // reports 디렉토리는 dataPath와 같은 레벨에 생성
+            // 예: C:\Users\...\SoftOneAutoData\reports\pdf
+            File dataPathFile = new File(dataPath);
+            File reportsDir = new File(dataPathFile.getParent(), "reports" + File.separator + "pdf");
+            
+            // 디렉토리가 없으면 생성
+            if (!reportsDir.exists()) {
+                if (!reportsDir.mkdirs()) {
+                    // 실패 시 dataPath 아래에 직접 생성
+                    reportsDir = new File(dataPath, "reports" + File.separator + "pdf");
+                    if (!reportsDir.exists()) {
+                        if (!reportsDir.mkdirs()) {
+                            throw new IOException("reports 디렉토리 생성 실패: " + reportsDir.getAbsolutePath());
+                        }
+                    }
+                }
             }
             
             // 파일 저장 (날짜와 시간 포함: yyyyMMddHHmm)
             String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmm"));
-            String fileName = String.format("%s/주간보고서_%s.pdf", reportsDir, timestamp);
+            String fileName = new File(reportsDir, "주간보고서_" + timestamp + ".pdf").getAbsolutePath();
+            
+            // 파일명 검증 (Path Traversal 방지)
+            File file = new File(fileName);
+            if (!file.getCanonicalPath().startsWith(reportsDir.getCanonicalPath())) {
+                throw new SecurityException("안전하지 않은 파일 경로입니다.");
+            }
             
             Document document = new Document(PageSize.A4, 50, 50, 50, 50);
             PdfWriter.getInstance(document, new FileOutputStream(fileName));

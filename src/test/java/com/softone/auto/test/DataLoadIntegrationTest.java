@@ -1,7 +1,6 @@
 package com.softone.auto.test;
 
 import com.softone.auto.model.Company;
-import com.softone.auto.repository.CompanyRepository;
 import com.softone.auto.service.CompanyService;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;

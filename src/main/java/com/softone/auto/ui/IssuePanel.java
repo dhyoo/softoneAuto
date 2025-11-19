@@ -63,17 +63,38 @@ public class IssuePanel extends JPanel {
         
         // 중앙: 분할 패널
         JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
-        splitPane.setResizeWeight(0.5);
+        splitPane.setResizeWeight(0.0);  // 좌측 목록 크기 고정 (0.0 = 좌측 고정, 1.0 = 우측 고정)
         splitPane.setBorder(null);
         splitPane.setDividerSize(5);
         splitPane.setContinuousLayout(true);
         splitPane.setOneTouchExpandable(true);
         
         // 왼쪽: 테이블
-        splitPane.setLeftComponent(createTablePanel());
+        JPanel tablePanel = createTablePanel();
+        tablePanel.setPreferredSize(new Dimension(400, 0));
+        tablePanel.setMinimumSize(new Dimension(400, 0));
+        tablePanel.setMaximumSize(new Dimension(400, Integer.MAX_VALUE));
+        splitPane.setLeftComponent(tablePanel);
         
         // 오른쪽: 입력 폼
         splitPane.setRightComponent(createFormPanel());
+        
+        // 초기 divider 위치 설정 (컴포넌트가 표시된 후에 설정)
+        SwingUtilities.invokeLater(() -> {
+            splitPane.setDividerLocation(400);  // 좌측 목록을 400px로 고정
+        });
+        
+        // 창 크기 변경 시 divider 위치 유지
+        addComponentListener(new java.awt.event.ComponentAdapter() {
+            @Override
+            public void componentResized(java.awt.event.ComponentEvent e) {
+                SwingUtilities.invokeLater(() -> {
+                    if (splitPane.getDividerLocation() != 400) {
+                        splitPane.setDividerLocation(400);
+                    }
+                });
+            }
+        });
         
         mainPanel.add(splitPane, BorderLayout.CENTER);
         

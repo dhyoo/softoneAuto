@@ -19,8 +19,8 @@ public class CommonCodeSqliteRepository {
     
     public CommonCodeSqliteRepository() {
         try {
-            // 공유 Connection 사용
-            this.connection = SqliteConnectionManager.getInstance().getConnection();
+            // Connection Pool 사용 (읽기는 Pool, 쓰기는 단일 연결)
+            this.connection = SqliteConnectionPool.getInstance().getWriteConnection();
             
             createTable();
             checkIntegrity();
@@ -239,8 +239,8 @@ public class CommonCodeSqliteRepository {
     }
     
     public void close() {
-        // 공유 Connection은 SqliteConnectionManager가 관리하므로 여기서 닫지 않음
-        // 필요시 SqliteConnectionManager.getInstance().close() 호출
+        // Connection은 SqliteConnectionPool이 관리하므로 여기서 닫지 않음
+        // 필요시 SqliteConnectionPool.getInstance().closeAllConnections() 호출
     }
 }
 

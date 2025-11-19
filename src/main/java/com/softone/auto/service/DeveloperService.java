@@ -2,8 +2,11 @@ package com.softone.auto.service;
 
 import com.softone.auto.model.Company;
 import com.softone.auto.model.Developer;
-import com.softone.auto.repository.DeveloperRepository;
+import com.softone.auto.repository.sqlite.DeveloperSqliteRepository;
 import com.softone.auto.util.AppContext;
+import com.softone.auto.util.AuditLogger;
+import com.softone.auto.util.PrivacyMaskingUtil;
+import lombok.extern.slf4j.Slf4j;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -13,12 +16,13 @@ import java.util.stream.Collectors;
 /**
  * 개발자 관리 서비스 (회사별 데이터 분리)
  */
+@Slf4j
 public class DeveloperService {
     
-    private final DeveloperRepository repository;
+    private final DeveloperSqliteRepository repository;
     
     public DeveloperService() {
-        this.repository = new DeveloperRepository();
+        this.repository = new DeveloperSqliteRepository();
     }
     
     /**
@@ -27,18 +31,26 @@ public class DeveloperService {
     public List<Developer> getAllDevelopers() {
         try {
             Company currentCompany = AppContext.getInstance().getCurrentCompany();
+            String companyName = currentCompany != null ? PrivacyMaskingUtil.maskName(currentCompany.getName()) : "없음";
+            log.debug("개발자 목록 조회 시작 - 회사: {}", companyName);
+            
             List<Developer> allDevelopers = repository.findAll();
             
             if (currentCompany == null) {
+                log.warn("회사가 선택되지 않아 전체 개발자 목록 반환");
                 return allDevelopers;
             }
             
-            return allDevelopers.stream()
+            List<Developer> filtered = allDevelopers.stream()
                     .filter(dev -> currentCompany.getId().equals(dev.getCompanyId()))
                     .collect(Collectors.toList());
+            
+            log.debug("개발자 목록 조회 완료 - 회사: {}, 조회된 개발자 수: {}건", companyName, filtered.size());
+            AuditLogger.logDataAccess("SYSTEM", "READ", "Developer", String.valueOf(filtered.size()));
+            
+            return filtered;
         } catch (Exception e) {
-            System.err.println("개발자 데이터 조회 오류: " + e.getMessage());
-            e.printStackTrace();
+            log.error("개발자 데이터 조회 오류: {}", e.getMessage(), e);
             return new java.util.ArrayList<>();
         }
     }
@@ -70,6 +82,15 @@ public class DeveloperService {
         developer.setNotes(notes);
         
         repository.save(developer);
+        
+        // 감사 로그 기록 (개인정보 마스킹)
+        String maskedName = PrivacyMaskingUtil.maskName(name);
+        String maskedEmail = PrivacyMaskingUtil.maskEmail(email);
+        String maskedPhone = PrivacyMaskingUtil.maskPhone(phone);
+        log.info("개발자 등록 완료 - 이름: {}, 이메일: {}, 전화: {}", maskedName, maskedEmail, maskedPhone);
+        AuditLogger.logDataModification("SYSTEM", "CREATE", "Developer", developer.getId(), 
+            "이름: " + maskedName);
+        
         return developer;
     }
     
@@ -77,14 +98,22 @@ public class DeveloperService {
      * 개발자 정보 수정
      */
     public void updateDeveloper(Developer developer) {
+        String maskedName = developer.getName() != null ? PrivacyMaskingUtil.maskName(developer.getName()) : "N/A";
+        log.info("개발자 정보 수정 - ID: {}, 이름: {}", developer.getId(), maskedName);
+        
         repository.update(developer);
+        
+        AuditLogger.logDataModification("SYSTEM", "UPDATE", "Developer", developer.getId(), 
+            "이름: " + maskedName);
     }
     
     /**
      * 개발자 삭제
      */
     public void deleteDeveloper(String id) {
+        log.info("개발자 삭제 - ID: {}", id);
         repository.delete(id);
+        AuditLogger.logDataModification("SYSTEM", "DELETE", "Developer", id, null);
     }
     
     /**

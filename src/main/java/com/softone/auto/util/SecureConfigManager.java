@@ -51,25 +51,38 @@ public class SecureConfigManager {
     
     /**
      * 마스터 키 가져오기
-     * 우선순위: 환경 변수 > 시스템 속성 > 기본값
+     * 우선순위: KeyStore > 환경 변수 > 시스템 속성 > 기본값
      */
     private static String getMasterKey() {
-        // 1. 환경 변수에서 확인
+        // 1. KeyStore에서 시도 (가장 안전)
+        try {
+            if (KeyStoreManager.keyStoreExists()) {
+                javax.crypto.SecretKey keyStoreKey = KeyStoreManager.getOrCreateMasterKey();
+                // SecretKey를 문자열로 변환 (Base64)
+                String keyString = java.util.Base64.getEncoder().encodeToString(keyStoreKey.getEncoded());
+                log.debug("마스터 키를 KeyStore에서 로드");
+                return keyString;
+            }
+        } catch (Exception e) {
+            log.warn("KeyStore에서 마스터 키 로드 실패, 대체 방법 사용: {}", e.getMessage());
+        }
+        
+        // 2. 환경 변수에서 확인
         String masterKey = System.getenv(MASTER_KEY_ENV_VAR);
         if (masterKey != null && !masterKey.isEmpty()) {
             log.debug("마스터 키를 환경 변수에서 로드");
             return masterKey;
         }
         
-        // 2. 시스템 속성에서 확인
+        // 3. 시스템 속성에서 확인
         masterKey = System.getProperty(MASTER_KEY_PROPERTY);
         if (masterKey != null && !masterKey.isEmpty()) {
             log.debug("마스터 키를 시스템 속성에서 로드");
             return masterKey;
         }
         
-        // 3. 기본값 사용 (프로덕션에서는 제거 권장)
-        log.warn("마스터 키가 설정되지 않아 기본값을 사용합니다. 프로덕션 환경에서는 환경 변수나 시스템 속성으로 설정하세요.");
+        // 4. 기본값 사용 (프로덕션에서는 제거 권장)
+        log.warn("마스터 키가 설정되지 않아 기본값을 사용합니다. 프로덕션 환경에서는 KeyStore, 환경 변수나 시스템 속성으로 설정하세요.");
         return DEFAULT_MASTER_KEY;
     }
     
